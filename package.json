@@ -1,0 +1,7 @@
+{
+  "name": "bango-mcp",
+  "version": "0.0.1",
+  "description": "Official MCP server for Bango API (https://bango-api.jp) — placeholder, full release planned August 2026",
+  "license": "MIT",
+  "keywords": ["mcp", "bango-api", "invoice", "corporate-number", "japan"]
+}
