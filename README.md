@@ -101,6 +101,8 @@ BANGO_API_KEY=... npx @modelcontextprotocol/inspector node dist/index.js   # 手
 
 不具合や要望は [Issues](https://github.com/taku1211/bango-mcp/issues) へ。お問い合わせ: support@bango-api.jp
 
+リリースやデータ更新のお知らせは公式X [@bangoapi](https://x.com/bangoapi) で発信しています。
+
 ---
 
 ## English
@@ -113,4 +115,4 @@ Tools: `bango_find_company`, `bango_get_company`, `bango_check_invoice`, `bango_
 claude mcp add bango -e BANGO_API_KEY=your_key -- npx -y bango-mcp
 ```
 
-Get a free API key at https://bango-api.jp/signup (new sign-ups get a 30-day Pro trial, no credit card required). License: MIT.
+Get a free API key at https://bango-api.jp/signup (new sign-ups get a 30-day Pro trial, no credit card required). Updates: [@bangoapi on X](https://x.com/bangoapi). License: MIT.
