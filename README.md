@@ -30,7 +30,7 @@ AI    ：bango_match_companies でまとめて名寄せし、確実な一致と�
 
 ### 1. APIキーを取る（無料）
 
-[bango-api.jp/signup](https://bango-api.jp/signup) で登録し、[ダッシュボード](https://bango-api.jp/dashboard/api-keys) で APIキーを発行します。Free プランは月500回まで、名寄せは月50件まで使えます（[料金](https://bango-api.jp/pricing)）。
+[bango-api.jp/signup](https://bango-api.jp/signup) で登録し、[ダッシュボード](https://bango-api.jp/dashboard/api-keys) で APIキーを発行します。新規登録すると30日間Proプラン無料トライアルが自動で始まり、通常APIは月500,000回、名寄せは月10,000件まで試せます。クレジットカードの登録は不要で、自動で課金されることはありません。終了後は Free プラン（月500回、名寄せ月50件）で続けて使えます（[料金](https://bango-api.jp/pricing)）。
 
 ### 2. AI アシスタントに登録する
 
@@ -113,4 +113,4 @@ Tools: `bango_find_company`, `bango_get_company`, `bango_check_invoice`, `bango_
 claude mcp add bango -e BANGO_API_KEY=your_key -- npx -y bango-mcp
 ```
 
-Get a free API key at https://bango-api.jp/signup. License: MIT.
+Get a free API key at https://bango-api.jp/signup (new sign-ups get a 30-day Pro trial, no credit card required). License: MIT.
