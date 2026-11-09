@@ -1,7 +1,27 @@
 {
   "name": "bango-mcp",
-  "version": "0.0.1",
-  "description": "Official MCP server for Bango API (https://bango-api.jp) — placeholder, full release planned August 2026",
+  "version": "0.1.0",
+  "description": "Bango API公式MCPサーバー：会社名から法人番号を特定し、所在地・インボイス登録状況をClaudeやCursorから自然言語で調べられます。",
+  "mcpName": "io.github.taku1211/bango-mcp",
+  "type": "module",
+  "bin": {
+    "bango-mcp": "dist/index.js"
+  },
+  "main": "dist/server.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -11,5 +31,25 @@
   "bugs": {
     "url": "https://github.com/taku1211/bango-mcp/issues"
   },
-  "keywords": ["mcp", "bango-api", "invoice", "corporate-number", "japan"]
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "bango-api",
+    "corporate-number",
+    "法人番号",
+    "invoice",
+    "インボイス",
+    "適格請求書",
+    "japan",
+    "claude"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
 }
