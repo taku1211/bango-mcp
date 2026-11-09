@@ -3,6 +3,10 @@ on:
   push:
     branches: [main]
   pull_request:
+permissions:
+  contents: read
+# このリポジトリは「taku1211 所有のアクションのみ許可」の設定なので、
+# actions/checkout・actions/setup-node を使わずにシェルだけで同じことをする。
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -10,11 +14,28 @@ jobs:
       matrix:
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v5
-        with:
-          node-version: ${{ matrix.node }}
-          cache: npm
+      - name: Checkout
+        env:
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          git init -q .
+          git remote add origin "https://github.com/${REPO}.git"
+          git fetch -q --depth 1 origin "${SHA}"
+          git checkout -q FETCH_HEAD
+      - name: Install Node.js ${{ matrix.node }}
+        env:
+          NODE_MAJOR: ${{ matrix.node }}
+        run: |
+          base="https://nodejs.org/dist/latest-v${NODE_MAJOR}.x"
+          file=$(curl -fsSL "${base}/SHASUMS256.txt" | awk '/linux-x64\.tar\.xz$/ {print $2}')
+          curl -fsSLO "${base}/${file}"
+          curl -fsSL "${base}/SHASUMS256.txt" | grep " ${file}\$" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/node"
+          tar -xJf "${file}" -C "$RUNNER_TEMP/node" --strip-components=1
+          rm "${file}"
+          echo "$RUNNER_TEMP/node/bin" >> "$GITHUB_PATH"
+      - run: node --version && npm --version
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
