@@ -28,6 +28,21 @@ AI    ：bango_match_companies でまとめて名寄せし、確実な一致と�
 
 ## はじめかた
 
+### いちばん簡単：コネクタURLを追加してログインするだけ（APIキー不要）
+
+claude.ai・Claude Desktop・Claude Code・Cursor など、リモート MCP（カスタムコネクタ）に対応したアプリなら、次の URL を追加して Bango API アカウントでログインするだけで使えます。Node.js も APIキーの設定も要りません。
+
+```
+https://mcp.bango-api.jp/mcp
+```
+
+- **claude.ai / Claude Desktop**: 設定 → コネクタ → 「カスタムコネクタを追加」に上の URL を入れる → ログイン画面でメール＋パスワードか Google でログイン
+- **Claude Code**: `claude mcp add --transport http bango https://mcp.bango-api.jp/mcp` → `/mcp` から認証
+- アカウントがない場合は [bango-api.jp/signup](https://bango-api.jp/signup) で無料登録（30日間Proトライアル付き）してから接続してください
+- 接続すると、ダッシュボードに「MCPコネクタ（アプリ名）」という APIキーが自動で作られます。利用回数はご契約プランの上限に数えられ、そのキーを削除すると接続が切れます
+
+以下は、手元で `npx` から動かすローカル版の手順です。
+
 ### 1. APIキーを取る（無料）
 
 [bango-api.jp/signup](https://bango-api.jp/signup) で登録し、[ダッシュボード](https://bango-api.jp/dashboard/api-keys) で APIキーを発行します。新規登録すると30日間Proプラン無料トライアルが自動で始まり、通常APIは月500,000回、名寄せは月10,000件まで試せます。クレジットカードの登録は不要で、自動で課金されることはありません。終了後は Free プラン（月500回、名寄せ月50件）で続けて使えます（[料金](https://bango-api.jp/pricing)）。
@@ -99,6 +114,8 @@ npm run build     # dist/ に出力
 BANGO_API_KEY=... npx @modelcontextprotocol/inspector node dist/index.js   # 手元で動作確認
 ```
 
+リモート版（コネクタURL＋ログインで使う版）の構成と運用は [docs/REMOTE.md](docs/REMOTE.md) を参照してください。
+
 不具合や要望は [Issues](https://github.com/taku1211/bango-mcp/issues) へ。お問い合わせ: support@bango-api.jp
 
 リリースやデータ更新のお知らせは公式X [@bangoapi](https://x.com/bangoapi) で発信しています。
@@ -110,6 +127,8 @@ BANGO_API_KEY=... npx @modelcontextprotocol/inspector node dist/index.js   # 手
 Official MCP server for [Bango API](https://bango-api.jp). It lets AI assistants identify Japanese companies by name (fuzzy matching) and look up corporate numbers (法人番号), addresses and qualified-invoice (T-number) registration status.
 
 Tools: `bango_find_company`, `bango_get_company`, `bango_check_invoice`, `bango_match_companies` (all read-only).
+
+Easiest: add the remote connector `https://mcp.bango-api.jp/mcp` in claude.ai, Claude Desktop, Claude Code or Cursor and sign in with your Bango API account (no API key setup needed). Or run it locally:
 
 ```bash
 claude mcp add bango -e BANGO_API_KEY=your_key -- npx -y bango-mcp

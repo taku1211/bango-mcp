@@ -8,7 +8,7 @@
     "source": "github"
   },
   "websiteUrl": "https://bango-api.jp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packages": [
     {
       "registryType": "npm",
@@ -26,6 +26,12 @@
           "format": "string"
         }
       ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.bango-api.jp/mcp"
     }
   ]
 }

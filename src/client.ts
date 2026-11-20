@@ -46,6 +46,10 @@ export type BangoClientOptions = {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /** リモート版は別の User-Agent を名乗り、API 側のログでローカル版と区別して数えられるようにする */
+  userAgent?: string;
+  /** APIキーが無効になったときの案内。リモート版は「キーを設定し直す」ではなく「再接続」を案内する */
+  invalidKeyHint?: string;
 };
 
 export class BangoClient {
@@ -53,12 +57,16 @@ export class BangoClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly userAgent: string;
+  private readonly invalidKeyHint: string;
 
   constructor(options: BangoClientOptions) {
     this.apiKey = options.apiKey?.trim() || undefined;
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 20_000;
+    this.userAgent = options.userAgent ?? `bango-mcp/${VERSION} (+https://github.com/taku1211/bango-mcp)`;
+    this.invalidKeyHint = options.invalidKeyHint ?? `${API_KEYS_URL} でキーを確認し、BANGO_API_KEY を設定し直してください。`;
   }
 
   async get<T>(path: string, query?: Record<string, string | number | boolean | undefined>): Promise<Envelope<T>> {
@@ -97,7 +105,7 @@ export class BangoClient {
           ...(init.headers as Record<string, string> | undefined),
           accept: "application/json",
           "x-api-key": this.apiKey,
-          "user-agent": `bango-mcp/${VERSION} (+https://github.com/taku1211/bango-mcp)`,
+          "user-agent": this.userAgent,
         },
         signal: AbortSignal.timeout(this.timeoutMs),
       });
@@ -118,19 +126,19 @@ export class BangoClient {
       json = null;
     }
     if (!res.ok) {
-      throw toBangoError(res.status, (json ?? {}) as Problem);
+      throw toBangoError(res.status, (json ?? {}) as Problem, this.invalidKeyHint);
     }
     return json as Envelope<T>;
   }
 }
 
-function toBangoError(status: number, p: Problem): BangoError {
+function toBangoError(status: number, p: Problem, invalidKeyHint: string): BangoError {
   const code = p.code ?? null;
   const detail = p.detail ? `（${p.detail}）` : "";
   switch (status) {
     case 401:
       return new BangoError(
-        `APIキーが無効です${detail}。${API_KEYS_URL} でキーを確認し、BANGO_API_KEY を設定し直してください。`,
+        `APIキーが無効です${detail}。${invalidKeyHint}`,
         status,
         code,
       );
