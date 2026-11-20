@@ -25,5 +25,5 @@
 
 - 公式URL・業種の補完（別プロジェクトで検証中。API本体に入り次第ツールに追加）
 - 変更監視（watch-targets）のツール化。書き込みを伴うので確認フローを設計してから
-- リモートMCP（Streamable HTTP）版。claude.ai のコネクタから直接使えるようにする
+- リモートMCP（Streamable HTTP）版 → 実装済み。構成は [REMOTE.md](./REMOTE.md)
 - 実ユーザーの質問を集めた評価セットでの説明文チューニング

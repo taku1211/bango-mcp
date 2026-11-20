@@ -20,7 +20,8 @@
     "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+    "prepublishOnly": "npm run typecheck && npm test && npm run build",
+    "start:remote": "node dist/remote/index.js"
   },
   "license": "MIT",
   "repository": {
@@ -44,7 +45,9 @@
     "claude"
   ],
   "dependencies": {
+    "@hono/node-server": "^2.1.9",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "hono": "^4.13.19",
     "zod": "^4.6.7"
   },
   "devDependencies": {

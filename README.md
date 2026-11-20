@@ -99,6 +99,8 @@ npm run build     # dist/ に出力
 BANGO_API_KEY=... npx @modelcontextprotocol/inspector node dist/index.js   # 手元で動作確認
 ```
 
+リモート版（コネクタURL＋ログインで使う版）の構成と運用は [docs/REMOTE.md](docs/REMOTE.md) を参照してください。
+
 不具合や要望は [Issues](https://github.com/taku1211/bango-mcp/issues) へ。お問い合わせ: support@bango-api.jp
 
 リリースやデータ更新のお知らせは公式X [@bangoapi](https://x.com/bangoapi) で発信しています。
