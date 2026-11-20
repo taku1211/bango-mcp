@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { BangoClient, BangoError, type Envelope } from "./client.js";
 import { parseDate, parseIdentifier, parseRegistrationNumber } from "./normalize.js";
+import { toCityCode } from "./cities.js";
 import { prefectureName, toPrefectureCode } from "./prefectures.js";
 import { VERSION } from "./version.js";
 
@@ -103,6 +104,118 @@ type BatchRow = {
   candidates: Array<{ corporate_number: string; name: string; name_kana: string | null; score: number | null }>;
 };
 
+export const LIST_SOURCE_NOTICE =
+  "出典: 法人番号・所在地は国税庁法人番号システムのWeb-API機能を利用して取得した情報をBango APIが編集・加工したもの（国税庁が保証するものではありません）。公式サイトURL・業種は各行の source（公的名簿・Common Crawl など）と観測日をもとにした推定を含みます。出典を表示すれば、納品・組み込みを含む商用利用ができます。";
+
+const INDUSTRY_MAJORS = [
+  "建設",
+  "製造",
+  "卸売",
+  "小売",
+  "不動産",
+  "運輸・物流",
+  "情報通信・IT",
+  "医療",
+  "介護・福祉・保育",
+  "教育・学習支援",
+  "士業・専門サービス",
+  "飲食",
+  "宿泊",
+  "生活関連サービス",
+  "広告・制作・コンサル",
+  "金融・保険",
+  "農林水産",
+  "エネルギー",
+  "その他サービス",
+  "団体・非営利",
+  "宗教",
+] as const;
+
+type ProfileRow = {
+  corporate_number: string;
+  name: string;
+  post_code: string | null;
+  address: { prefecture: string | null; city: string | null; street: string | null } | null;
+  web: { url: string; status: string; source: string | null; observed_at: string | null } | null;
+  industry: {
+    major: string;
+    minor: string | null;
+    basis: string;
+    source: string | null;
+    jsic: { code: string; name: string } | null;
+  } | null;
+  // 電話・問い合わせフォーム。API が返す形のまま渡す（Free は有無だけ、Starter 以上は値まで）。
+  contact?: {
+    has_phone?: boolean;
+    has_contact_form?: boolean;
+    phone?: { number?: string } | null;
+    form_url?: string | null;
+    source?: string | null;
+  } | null;
+};
+
+type CompanyRow = ReturnType<typeof toCompanyRow>;
+
+function toCompanyRow(p: ProfileRow) {
+  return {
+    corporate_number: p.corporate_number,
+    name: p.name,
+    prefecture: p.address?.prefecture ?? null,
+    city: p.address?.city ?? null,
+    street: p.address?.street ?? null,
+    post_code: p.post_code,
+    website: p.web
+      ? { url: p.web.url, status: p.web.status, source: p.web.source, observed_at: p.web.observed_at?.slice(0, 10) ?? null }
+      : null,
+    industry: p.industry
+      ? {
+          major: p.industry.major,
+          minor: p.industry.minor,
+          jsic_code: p.industry.jsic?.code ?? null,
+          jsic_name: p.industry.jsic?.name ?? null,
+          basis: p.industry.basis,
+          source: p.industry.source,
+        }
+      : null,
+    ...(p.contact !== undefined ? { contact: p.contact } : {}),
+  };
+}
+
+const CSV_HEADER = [
+  "法人番号", "法人名", "都道府県", "市区町村", "番地", "郵便番号",
+  "公式サイトURL", "URLの確認状態", "URLの出典", "URLの観測日",
+  "業種(大分類)", "業種(細分類)", "日本標準産業分類コード", "日本標準産業分類名", "業種の根拠", "業種の出典",
+  "電話番号あり", "問い合わせフォームあり", "電話番号", "問い合わせフォームURL", "連絡先の出典",
+];
+
+function csvCell(raw: string | null | undefined): string {
+  let v = raw ?? "";
+  if (/^[=+\-@]/.test(v)) v = `'${v}`; // 表計算での数式実行を防ぐ
+  return /[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v;
+}
+
+function yesNo(v: boolean | undefined): string {
+  return v === undefined ? "" : v ? "あり" : "なし";
+}
+
+function toCsv(rows: CompanyRow[]): string {
+  const lines = [CSV_HEADER.join(",")];
+  for (const r of rows) {
+    const c = r.contact ?? null;
+    lines.push(
+      [
+        r.corporate_number, r.name, r.prefecture, r.city, r.street, r.post_code,
+        r.website?.url, r.website?.status, r.website?.source, r.website?.observed_at,
+        r.industry?.major, r.industry?.minor, r.industry?.jsic_code, r.industry?.jsic_name, r.industry?.basis, r.industry?.source,
+        yesNo(c?.has_phone), yesNo(c?.has_contact_form), c?.phone?.number, c?.form_url, c?.source,
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  }
+  return `${lines.join("\r\n")}\r\n`;
+}
+
 // ---------------------------------------------------------------------------
 // helpers
 
@@ -184,12 +297,13 @@ export function createServer(options: ServerOptions): McpServer {
   const batchPollMs = options.batchPollMs ?? 1_500;
 
   const server = new McpServer(
-    { name: "bango-mcp", title: "Bango API（法人番号・インボイス）", version: VERSION },
+    { name: "bango-mcp", title: "Bango API（法人番号・インボイス・会社リスト）", version: VERSION },
     {
       instructions:
         "日本の会社（法人）を特定し、法人番号・所在地・インボイス（適格請求書発行事業者）の登録状況を調べるためのツールです。" +
         "会社名しか分からないときは bango_find_company、法人番号かT番号が分かっているときは bango_get_company、" +
-        "請求書のT番号が有効かを確かめたいときは bango_check_invoice、会社名の一覧に法人番号をまとめて付けたいときは bango_match_companies を使います。" +
+        "請求書のT番号が有効かを確かめたいときは bango_check_invoice、会社名の一覧に法人番号をまとめて付けたいときは bango_match_companies、" +
+        "エリアや業種で会社のリスト（公式サイトURL・業種つき、CSVも可）を作りたいときは bango_list_companies を使います。" +
         "候補が複数あって決めきれないときは、推測で1社に決めずにユーザーへ所在地などを確認してください。" +
         "回答で法人情報を示すときは、国税庁の公表情報をもとにしたデータであり国税庁が保証するものではないことを添えてください。",
     },
@@ -533,6 +647,114 @@ export function createServer(options: ServerOptions): McpServer {
           results,
           hint: "confident はそのまま使える一致、review は候補をユーザーに確認、unmatched は社名の表記を変えて bango_find_company で再検索してください。",
           source: SOURCE_NOTICE,
+        });
+      }),
+  );
+
+  // 5) エリア・業種 → 会社リスト ------------------------------------------------
+  server.registerTool(
+    "bango_list_companies",
+    {
+      title: "エリア・業種で会社のリストを作る",
+      description:
+        "List Japanese companies (法人) by area and industry, with official website URL and industry, each carrying its source and observation date. " +
+        "Use this for requests like 「大阪市の工務店で公式サイトがある会社をリストにして」「堺市の介護事業所を100社CSVで」. " +
+        "Give at least one of prefecture, city, post_code_prefix, industry or jsic_code. " +
+        "city accepts a designated city name (大阪市, 横浜市, 東京23区 ...) which covers all its wards, or a 5-digit local government code for any other city. " +
+        "Results are ordered by corporate number; when next_cursor is not null, call again with cursor to get the next page. " +
+        "Set format to csv to also receive a ready-to-save CSV (UTF-8, CRLF). " +
+        "Phone and contact form: on the Free plan only has_phone / has_contact_form are filled; Starter and above also return the number and the form URL. " +
+        "Each company returned counts against the user's monthly company quota for list search (remaining_this_month), separately from API requests. " +
+        "Ask for only as many companies as the user needs.",
+      inputSchema: {
+        prefecture: z.string().optional().describe("都道府県。「大阪」「大阪府」「27」「osaka」のどれでも可"),
+        city: z
+          .string()
+          .optional()
+          .describe("市区町村。政令指定都市は名前（大阪市・横浜市・東京23区など）で全区が対象。それ以外は5桁の全国地方公共団体コード（例: 27203 豊中市）"),
+        post_code_prefix: z.string().optional().describe("郵便番号の前方一致（3〜7桁、ハイフン可）。例: 530 / 591-0001"),
+        industry: z.enum(INDUSTRY_MAJORS).optional().describe("業種の大分類（推定値）。工務店・建設会社は「建設」、介護事業所は「介護・福祉・保育」"),
+        jsic_code: z
+          .string()
+          .regex(/^\d{2}$/)
+          .optional()
+          .describe("日本標準産業分類（第14回改定）の中分類2桁。例: 06 総合工事業、85 社会保険・社会福祉・介護事業"),
+        has_website: z.boolean().optional().describe("true で公式サイトURLがある会社だけ、false でない会社だけ"),
+        verified_only: z.boolean().optional().describe("true でサイト自身が社名を名乗っている根拠のあるURLだけに絞る"),
+        limit: z.number().int().min(1).max(100).optional().describe("1回に返す社数（1〜100、既定20）。返した社数だけ月間の社数枠を使う"),
+        cursor: z.string().regex(/^\d{13}$/).optional().describe("前回の next_cursor。続きのページを取るときに渡す"),
+        format: z.enum(["rows", "csv"]).optional().describe("csv にすると、表と一緒に保存用のCSV文字列（csv）も返す"),
+      },
+      annotations: { title: "エリア・業種で会社のリストを作る", ...READ_ONLY },
+    },
+    async ({ prefecture, city, post_code_prefix, industry, jsic_code, has_website, verified_only, limit, cursor, format }) =>
+      guard(async () => {
+        let prefecture_code: string | undefined;
+        if (prefecture) {
+          const code = toPrefectureCode(prefecture);
+          if (!code) return fail(`都道府県「${prefecture}」を解釈できませんでした。「東京都」「大阪」「13」のように指定してください。`);
+          prefecture_code = code;
+        }
+        let city_code: string | undefined;
+        if (city) {
+          const code = toCityCode(city);
+          if (!code) {
+            return fail(
+              `市区町村「${city}」をコードにできませんでした。政令指定都市（大阪市・横浜市・東京23区など）は名前で、それ以外の市区町村は5桁の全国地方公共団体コード（例: 27203 豊中市）で指定してください。`,
+            );
+          }
+          city_code = code;
+        }
+        let pc: string | undefined;
+        if (post_code_prefix) {
+          pc = post_code_prefix.normalize("NFKC").replace(/[^0-9]/g, "");
+          if (pc.length < 3 || pc.length > 7) return fail(`郵便番号「${post_code_prefix}」は先頭3〜7桁で指定してください（例: 530）。`);
+        }
+        if (!prefecture_code && !city_code && !pc && !industry && !jsic_code) {
+          return fail("エリア（prefecture / city / post_code_prefix）か業種（industry / jsic_code）のどれか1つを指定してください。");
+        }
+
+        const res = await client.get<ProfileRow[]>("/companies/profiles", {
+          prefecture_code,
+          city_code,
+          post_code_prefix: pc,
+          industry_major: industry,
+          jsic_code,
+          has_website,
+          web_status: verified_only ? "verified" : undefined,
+          limit: limit ?? 20,
+          cursor,
+        });
+
+        const companies = res.data.map(toCompanyRow);
+        const quota = res.meta?.quota?.profile_rows;
+        const remaining = quota && !quota.unlimited ? quota.remaining : null;
+        const next = res.next_cursor ?? null;
+        let hint: string;
+        if (companies.length === 0) {
+          hint = "該当なし。業種を外す、市区町村を都道府県に広げる、has_website を外す、のいずれかで再検索してください。";
+        } else if (next) {
+          hint = `続きがあります。ユーザーがもっと必要なら cursor に "${next}" を渡して同じ条件で呼び出してください。`;
+        } else {
+          hint = "これで条件に合う会社はすべてです。";
+        }
+        return ok({
+          query: {
+            prefecture: prefecture_code ? prefectureName(prefecture_code) : null,
+            city_code: city_code ?? null,
+            post_code_prefix: pc ?? null,
+            industry: industry ?? null,
+            jsic_code: jsic_code ?? null,
+            has_website: has_website ?? null,
+            verified_only: !!verified_only,
+          },
+          companies,
+          ...(format === "csv" ? { csv: toCsv(companies) } : {}),
+          has_more: !!res.has_more,
+          next_cursor: next,
+          remaining_this_month: remaining,
+          hint,
+          source_notice: LIST_SOURCE_NOTICE,
         });
       }),
   );
