@@ -55,7 +55,7 @@ AIアシスタント ──(Streamable HTTP + Bearer)──▶ mcp.bango-api.jp/
 
 ## デプロイ手順（Railway）
 
-1. 既存プロジェクトに新サービスを追加し、このリポジトリ（main）を接続。`railway.json` のとおり `npm ci`（自動）→ `npm run build` → `npm run start:remote`、ヘルスチェック `/health`
+1. 既存プロジェクト（bango-api-api-prod）にサービス `bango-mcp-remote` を追加済み（2026-11-20）。このリポジトリの main を接続。`railway.json` のとおり `npm ci`（自動）→ `npm run build` → `npm run start:remote`、ヘルスチェック `/health`
 2. 上の環境変数を設定
 3. カスタムドメイン `mcp.bango-api.jp` を割り当て、DNS に CNAME を追加
 4. Google ログインを使う場合: Supabase の Auth → URL Configuration → Redirect URLs に `https://mcp.bango-api.jp/authorize/google/callback` を追加し、`MCP_GOOGLE_LOGIN=1`
