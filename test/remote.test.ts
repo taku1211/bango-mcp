@@ -380,7 +380,7 @@ describe("mcp endpoint", () => {
     const { tokens } = await fullFlow(ctx);
     const client = await mcpClient(ctx.app, tokens.access_token!);
     const tools = await client.listTools();
-    expect(tools.tools.map((t) => t.name).sort()).toEqual(["bango_check_invoice", "bango_find_company", "bango_get_company", "bango_match_companies"]);
+    expect(tools.tools.map((t) => t.name).sort()).toEqual(["bango_check_invoice", "bango_find_company", "bango_get_company", "bango_list_companies", "bango_match_companies"]);
     const result = await client.callTool({ name: "bango_find_company", arguments: { company_name: "トヨタ自動車" } });
     expect(result.isError).toBeFalsy();
     const call = ctx.apiCalls.at(-1)!;

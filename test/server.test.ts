@@ -66,13 +66,14 @@ describe("normalize", () => {
 });
 
 describe("tools", () => {
-  it("lists four read-only tools with annotations", async () => {
+  it("lists five read-only tools with annotations", async () => {
     const client = await connect(() => ({ status: 500, body: {} }));
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       "bango_check_invoice",
       "bango_find_company",
       "bango_get_company",
+      "bango_list_companies",
       "bango_match_companies",
     ]);
     for (const t of tools) {
@@ -261,4 +262,136 @@ describe("tools", () => {
     expect(res.isError).toBe(true);
     expect((res.content as any)[0].text).toContain("今月の利用上限");
   });
+
+describe("bango_list_companies", () => {
+  const profile = (n: string, extra: Record<string, unknown> = {}) => ({
+    object: "company_profile",
+    corporate_number: n,
+    name: `株式会社サンプル${n.slice(-1)}`,
+    prefecture_code: "27",
+    city_code: "27127",
+    post_code: "5300001",
+    address: { prefecture: "大阪府", city: "大阪市北区", street: "梅田1-1" },
+    web: {
+      url: "https://example.co.jp/",
+      status: "verified",
+      evidence: ["footer_copyright"],
+      source: "common_crawl:CC-MAIN-2026-43",
+      observed_at: "2026-10-20T00:00:00Z",
+    },
+    industry: {
+      major: "建設",
+      minor: "工務店",
+      basis: "site_llm",
+      source: "industry_llm:2026-11-20",
+      jsic: { major: "D", major_name: "建設業", code: "06", name: "総合工事業" },
+      classified_at: "2026-11-20T00:00:00Z",
+    },
+    ...extra,
+  });
+  const listBody = (data: unknown[], next: string | null, remaining: number | null) => ({
+    object: "list",
+    item: "company_profile",
+    data,
+    has_more: next !== null,
+    next_cursor: next,
+    limit: 20,
+    links: { next: null },
+    meta: {
+      quota: {
+        api_requests: null,
+        batch_rows: null,
+        profile_rows: remaining === null ? null : { unlimited: false, limit: 500, remaining },
+      },
+    },
+  });
+
+  it("maps a designated city name, industry and website filter to the range search", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    const client = await connect(() => ({ status: 200, body: listBody([profile("1000000000001")], "1000000000001", 412) }), { calls });
+
+    const result = await client.callTool({
+      name: "bango_list_companies",
+      arguments: { prefecture: "大阪", city: "大阪市", industry: "建設", has_website: true, verified_only: true, limit: 50 },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const url = calls[0].url;
+    expect(url.pathname).toBe("/v1/companies/profiles");
+    expect(url.searchParams.get("prefecture_code")).toBe("27");
+    expect(url.searchParams.get("city_code")).toBe("27100");
+    expect(url.searchParams.get("industry_major")).toBe("建設");
+    expect(url.searchParams.get("has_website")).toBe("true");
+    expect(url.searchParams.get("web_status")).toBe("verified");
+    expect(url.searchParams.get("limit")).toBe("50");
+    const out = result.structuredContent as Record<string, any>;
+    expect(out.companies[0]).toMatchObject({
+      corporate_number: "1000000000001",
+      prefecture: "大阪府",
+      city: "大阪市北区",
+      website: { url: "https://example.co.jp/", status: "verified", source: "common_crawl:CC-MAIN-2026-43" },
+      industry: { major: "建設", minor: "工務店", jsic_code: "06", jsic_name: "総合工事業" },
+    });
+    expect(out.next_cursor).toBe("1000000000001");
+    expect(out.remaining_this_month).toBe(412);
+    expect(out.hint).toContain("cursor");
+    expect(out.source_notice).toContain("出典");
+  });
+
+  it("passes contact fields through as returned (Free gets presence only)", async () => {
+    const contact = { has_phone: true, has_contact_form: false, phone: null, form_url: null, source: null };
+    const client = await connect(() => ({ status: 200, body: listBody([profile("1000000000002", { contact })], null, 10) }));
+
+    const result = await client.callTool({ name: "bango_list_companies", arguments: { prefecture: "27" } });
+
+    const out = result.structuredContent as Record<string, any>;
+    expect(out.companies[0].contact).toEqual(contact);
+    expect(out.next_cursor).toBeNull();
+  });
+
+  it("returns CSV text when asked", async () => {
+    const client = await connect(() => ({ status: 200, body: listBody([profile("1000000000003")], null, 5) }));
+
+    const result = await client.callTool({ name: "bango_list_companies", arguments: { prefecture: "大阪府", format: "csv" } });
+
+    const out = result.structuredContent as Record<string, any>;
+    const lines = String(out.csv).split("\r\n");
+    expect(lines[0]).toContain("法人番号,法人名");
+    expect(lines[1]).toContain("1000000000003");
+    expect(lines[1]).toContain("https://example.co.jp/");
+  });
+
+  it("requires an area or an industry without calling the API", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    const client = await connect(() => ({ status: 200, body: listBody([], null, 5) }), { calls });
+
+    const result = await client.callTool({ name: "bango_list_companies", arguments: { has_website: true } });
+
+    expect(result.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects a city name it cannot map and asks for the 5-digit code", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    const client = await connect(() => ({ status: 200, body: listBody([], null, 5) }), { calls });
+
+    const result = await client.callTool({ name: "bango_list_companies", arguments: { city: "豊中市" } });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain("5桁");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("explains the monthly company quota when it runs out", async () => {
+    const client = await connect(() => ({
+      status: 429,
+      body: { status: 429, code: "QUOTA_EXCEEDED", limit_scope: "profile_rows", retry_after: 3600 },
+    }));
+
+    const result = await client.callTool({ name: "bango_list_companies", arguments: { prefecture: "27" } });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain("社数");
+  });
+});
 });

@@ -1,7 +1,7 @@
 {
   "name": "bango-mcp",
   "version": "0.1.0",
-  "description": "Bango API公式MCPサーバー：会社名から法人番号を特定し、所在地・インボイス登録状況をClaudeやCursorから自然言語で調べられます。",
+  "description": "Bango API公式MCPサーバー：会社名から法人番号を特定し、所在地・インボイス登録状況を調べたり、エリア・業種で会社リストを作ったりがClaudeやCursorから自然言語でできます。",
   "mcpName": "io.github.taku1211/bango-mcp",
   "type": "module",
   "bin": {
