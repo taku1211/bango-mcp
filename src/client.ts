@@ -4,6 +4,7 @@ export const DEFAULT_BASE_URL = "https://api.bango-api.jp/v1";
 export const SIGNUP_URL = "https://bango-api.jp/signup";
 export const API_KEYS_URL = "https://bango-api.jp/dashboard/api-keys";
 export const PRICING_URL = "https://bango-api.jp/pricing";
+export const LISTS_URL = "https://bango-api.jp/dashboard/lists";
 
 /** Bango API の応答エンベロープ（必要な部分だけ） */
 export type Envelope<T> = {

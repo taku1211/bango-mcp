@@ -56,6 +56,39 @@ export class AccountGateway {
   }
 
   async issueApiKey(supabaseAccessToken: string, label: string): Promise<IssuedKey> {
+    const first = await this.requestApiKey(supabaseAccessToken, label);
+    if (first !== "not_onboarded") return first;
+    // Google で初めて来た人や、メール確認のあと Web を開かずに来た人は初期登録がまだ。
+    // Web の登録直後と同じ処理をここで済ませ、コネクタの画面だけで登録から接続まで終わらせる。
+    await this.completeOnboarding(supabaseAccessToken);
+    const second = await this.requestApiKey(supabaseAccessToken, label);
+    if (second === "not_onboarded") {
+      throw new LoginError(
+        `このアカウントは Bango API の初期登録がまだ完了していません。${SIGNUP_URL} から登録を完了してから、もう一度接続してください。`,
+        "not_onboarded",
+      );
+    }
+    return second;
+  }
+
+  private async completeOnboarding(supabaseAccessToken: string): Promise<void> {
+    try {
+      await this.fetchImpl(`${this.apiBase}/onboarding/complete`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${supabaseAccessToken}`,
+          "content-type": "application/json",
+          accept: "application/json",
+        },
+        body: "{}",
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      // 失敗したらキー発行の再試行が not_onboarded を返し、案内文に落ちる。
+    }
+  }
+
+  private async requestApiKey(supabaseAccessToken: string, label: string): Promise<IssuedKey | "not_onboarded"> {
     let res: Response;
     try {
       res = await this.fetchImpl(`${this.apiBase}/onboarding/api-keys`, {
@@ -71,12 +104,7 @@ export class AccountGateway {
     } catch {
       throw new LoginError("Bango API に接続できませんでした。少し待ってからもう一度お試しください。", "unavailable");
     }
-    if (res.status === 404) {
-      throw new LoginError(
-        `このアカウントは Bango API の初期登録がまだ完了していません。${SIGNUP_URL} から登録を完了してから、もう一度接続してください。`,
-        "not_onboarded",
-      );
-    }
+    if (res.status === 404) return "not_onboarded";
     if (!res.ok) {
       throw new LoginError(`APIキーを発行できませんでした（HTTP ${res.status}）。時間をおいてもう一度お試しください。`, "unavailable");
     }

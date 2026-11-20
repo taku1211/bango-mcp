@@ -40,13 +40,13 @@ export function loginPage(input: {
 }): string {
   const error = input.error ? `<p class="error" role="alert">${escapeHtml(input.error)}</p>` : "";
   const google = input.googleEnabled
-    ? `<div class="or">または</div><a class="button secondary" href="/authorize/google?request=${encodeURIComponent(input.request)}">Googleでログイン</a>`
+    ? `<div class="or">または</div><a class="button secondary" href="/authorize/google?request=${encodeURIComponent(input.request)}">Googleでログイン・新規登録</a><p class="muted" style="margin:6px 0 0;text-align:center">はじめての方も、Googleならこのまま無料登録して接続できます。</p>`
     : "";
   return layout(
     "Bango API にログイン",
     `<div class="card">
 <h1>Bango API にログイン</h1>
-<p class="muted">ログインすると、次のアプリから Bango API の法人番号・インボイス検索を使えるようになります。</p>
+<p class="muted">ログインすると、次のアプリから Bango API の会社リスト作成・法人番号・インボイス検索を使えるようになります。</p>
 <div class="client"><strong>${escapeHtml(input.clientName)}</strong><br><span class="muted">接続先: ${escapeHtml(input.redirectHost)}</span></div>
 ${error}
 <form method="post" action="/authorize/password">
@@ -60,7 +60,7 @@ ${error}
 <p class="muted" style="margin:8px 0 0;text-align:right"><a href="https://bango-api.jp/forgot-password" rel="noopener">パスワードを忘れた方</a></p>
 ${google}
 <p class="muted" style="margin-top:20px">接続すると、このアカウントに「MCPコネクタ」用のAPIキーが自動で発行されます。利用回数はご契約プランの上限に数えられます。接続を解除するには、<a href="https://bango-api.jp/dashboard/api-keys" rel="noopener">ダッシュボード</a>でそのキーを削除してください。</p>
-<p class="muted">アカウントをお持ちでない方は <a href="https://bango-api.jp/signup" rel="noopener">無料登録</a>（30日間Proトライアル付き）</p>
+<p class="muted">アカウントをお持ちでない方は <a href="https://bango-api.jp/signup" target="_blank" rel="noopener">メールアドレスで無料登録</a>してください。届いたメールのリンクを開いたら、この画面に戻ってログインすると接続できます（この画面は開いたままで大丈夫です）。</p>
 </div>`,
   );
 }
