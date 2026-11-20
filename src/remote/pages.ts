@@ -33,6 +33,7 @@ function layout(title: string, body: string): string {
 export function loginPage(input: {
   clientName: string;
   redirectHost: string;
+  verified: boolean;
   request: string;
   googleEnabled: boolean;
   error?: string;
@@ -47,7 +48,12 @@ export function loginPage(input: {
     `<div class="card">
 <h1>Bango API にログイン</h1>
 <p class="muted">ログインすると、次のアプリから Bango API の法人番号・インボイス検索を使えるようになります。</p>
-<div class="client"><strong>${escapeHtml(input.clientName)}</strong><br><span class="muted">接続先: ${escapeHtml(input.redirectHost)}</span></div>
+<div class="client"><strong>${escapeHtml(input.clientName)}</strong>${input.verified ? "" : `<span class="muted">（未確認のアプリ）</span>`}<br><span class="muted">接続先: <strong>${escapeHtml(input.redirectHost)}</strong></span></div>
+${
+  input.verified
+    ? ""
+    : `<p class="error" role="note">この接続先は Bango API で確認済みのアプリ（Claude・ChatGPT・Cursor など）ではありません。アプリ名は接続元が自由に名乗れるため、接続先「${escapeHtml(input.redirectHost)}」に心当たりがない場合はログインしないでください。ログインすると、この接続先があなたのアカウントで Bango API を使えるようになります。</p>`
+}
 ${error}
 <form method="post" action="/authorize/password">
 <input type="hidden" name="request" value="${escapeHtml(input.request)}">

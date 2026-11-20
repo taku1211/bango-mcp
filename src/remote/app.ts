@@ -54,6 +54,7 @@ export function createRemoteApp(options: RemoteAppOptions): Hono {
   const refreshTtl = options.refreshTokenTtlSeconds ?? 90 * 24 * 60 * 60;
   const usedCodes = new Map<string, number>();
   const loginLimiter = new FixedWindowLimiter(10, 10 * 60 * 1000);
+  const registerLimiter = new FixedWindowLimiter(30, 10 * 60 * 1000);
   const secureCookie = base.startsWith("https://");
 
   const app = new Hono();
@@ -68,6 +69,15 @@ export function createRemoteApp(options: RemoteAppOptions): Hono {
       maxAge: 86400,
     }),
   );
+
+  // ログイン画面を他サイトの iframe に埋め込ませない（クリックジャッキング対策）
+  app.use("*", async (c, next) => {
+    await next();
+    c.header("x-frame-options", "DENY");
+    c.header("content-security-policy", "frame-ancestors 'none'");
+    c.header("referrer-policy", "no-referrer");
+    c.header("x-content-type-options", "nosniff");
+  });
 
   app.get("/", (c) => c.html(landingPage(resource)));
   app.get("/health", (c) => c.json({ ok: true, version: VERSION }));
@@ -103,6 +113,9 @@ export function createRemoteApp(options: RemoteAppOptions): Hono {
   // --- 動的クライアント登録（RFC 7591） -------------------------------------
   // DBを持たないので、登録内容（redirect_uris と表示名）を暗号化して client_id そのものにする。
   app.post("/register", async (c) => {
+    if (!registerLimiter.take(clientIp(c), now())) {
+      return c.json({ error: "slow_down", error_description: "登録リクエストが多すぎます。しばらく待ってから再度お試しください。" }, 429);
+    }
     const body = (await c.req.json().catch(() => null)) as { redirect_uris?: unknown; client_name?: unknown } | null;
     if (!body || !Array.isArray(body.redirect_uris) || body.redirect_uris.length === 0 || body.redirect_uris.length > 10) {
       return c.json({ error: "invalid_redirect_uri", error_description: "redirect_uris は1〜10件の配列で指定してください。" }, 400);
@@ -154,7 +167,15 @@ export function createRemoteApp(options: RemoteAppOptions): Hono {
       AUTH_REQUEST_TTL,
       now(),
     );
-    return c.html(loginPage({ clientName: client.n, redirectHost: displayHost(redirectUri), request, googleEnabled: !!options.googleLoginEnabled }));
+    return c.html(
+      loginPage({
+        clientName: client.n,
+        redirectHost: displayHost(redirectUri),
+        verified: isKnownClientRedirect(redirectUri),
+        request,
+        googleEnabled: !!options.googleLoginEnabled,
+      }),
+    );
   });
 
   app.post("/authorize/password", async (c) => {
@@ -166,7 +187,15 @@ export function createRemoteApp(options: RemoteAppOptions): Hono {
     const password = typeof form.password === "string" ? form.password : "";
     const rerender = (error: string, status: 400 | 401 | 429 | 503) =>
       c.html(
-        loginPage({ clientName: req.n, redirectHost: displayHost(req.ru), request: requestToken, googleEnabled: !!options.googleLoginEnabled, error, email }),
+        loginPage({
+          clientName: req.n,
+          redirectHost: displayHost(req.ru),
+          verified: isKnownClientRedirect(req.ru),
+          request: requestToken,
+          googleEnabled: !!options.googleLoginEnabled,
+          error,
+          email,
+        }),
         status,
       );
     if (!email || !password) return rerender("メールアドレスとパスワードを入力してください。", 400);
@@ -219,7 +248,8 @@ export function createRemoteApp(options: RemoteAppOptions): Hono {
   });
 
   async function completeAuthorization(c: Context, req: AuthRequestPayload, supabaseToken: string): Promise<Response> {
-    const label = `MCPコネクタ（${req.n}）`.slice(0, 64);
+    // どの戻り先に発行したキーかをダッシュボードで見分けられるよう、接続先ホストもラベルに残す
+    const label = `MCPコネクタ（${req.n} / ${displayHost(req.ru)}）`.slice(0, 64);
     const issued = await options.account.issueApiKey(supabaseToken, label);
     const code = sealer.seal<CodePayload>(
       "code",
@@ -381,6 +411,22 @@ export function redirectUriMatches(registered: string[], candidate: string): boo
       return false;
     }
   });
+}
+
+// 主要なMCPクライアントの戻り先。これ以外は誰でも登録できる戻り先なので、ログイン画面で「未確認」と警告する。
+const KNOWN_REDIRECT_HOSTS = new Set(["claude.ai", "claude.com", "chatgpt.com", "chat.openai.com"]);
+const KNOWN_CUSTOM_SCHEMES = new Set(["cursor:", "vscode:", "vscode-insiders:", "windsurf:", "claude:"]);
+
+export function isKnownClientRedirect(uri: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(uri);
+  } catch {
+    return false;
+  }
+  if (url.protocol === "https:") return KNOWN_REDIRECT_HOSTS.has(url.hostname);
+  if (url.protocol === "http:") return LOOPBACK_HOSTS.has(url.hostname);
+  return KNOWN_CUSTOM_SCHEMES.has(url.protocol);
 }
 
 function sanitizeClientName(value: unknown): string {
