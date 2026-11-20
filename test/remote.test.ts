@@ -5,7 +5,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { describe, expect, it } from "vitest";
 
 import { AccountGateway } from "../src/remote/account.js";
-import { createRemoteApp, isAllowedRedirectUri, REMOTE_USER_AGENT, redirectUriMatches } from "../src/remote/app.js";
+import { createRemoteApp, isAllowedRedirectUri, isKnownClientRedirect, REMOTE_USER_AGENT, redirectUriMatches } from "../src/remote/app.js";
 import { TokenSealer } from "../src/remote/token.js";
 
 const BASE = "https://mcp.example.test";
@@ -246,7 +246,7 @@ describe("password login", () => {
     expect(location.searchParams.get("iss")).toBe(BASE);
     const issue = ctx.accountCalls.find((c) => c.url.endsWith("/v1/onboarding/api-keys"))!;
     expect((issue.init.headers as Record<string, string>).authorization).toBe("Bearer sb-access");
-    expect(JSON.parse(String(issue.init.body))).toEqual({ label: "MCPコネクタ（Claude）" });
+    expect(JSON.parse(String(issue.init.body))).toEqual({ label: "MCPコネクタ（Claude / claude.ai）" });
     expect(tokenRes.status).toBe(200);
     expect(tokenRes.headers.get("cache-control")).toBe("no-store");
     expect(tokens.token_type).toBe("Bearer");
@@ -419,5 +419,54 @@ describe("mcp endpoint", () => {
     const { tokens } = await fullFlow(ctx);
     const res = await ctx.app.request("/mcp", { method: "GET", headers: { authorization: `Bearer ${tokens.access_token}` } });
     expect(res.status).toBe(405);
+  });
+});
+
+describe("unverified client hardening", () => {
+  it("classifies known MCP client redirects", () => {
+    expect(isKnownClientRedirect("https://claude.ai/api/mcp/auth_callback")).toBe(true);
+    expect(isKnownClientRedirect("https://chatgpt.com/connector_platform_oauth_redirect")).toBe(true);
+    expect(isKnownClientRedirect("http://127.0.0.1:33418/callback")).toBe(true);
+    expect(isKnownClientRedirect("cursor://anysphere.cursor-mcp/oauth/callback")).toBe(true);
+    expect(isKnownClientRedirect("https://evil.example.com/cb")).toBe(false);
+    expect(isKnownClientRedirect("https://claude.ai.evil.example.com/cb")).toBe(false);
+    expect(isKnownClientRedirect("myapp://cb")).toBe(false);
+  });
+
+  it("warns on the login page when the redirect is not a known client, even if it claims to be Claude", async () => {
+    const { app } = setup();
+    const evil = "https://evil.example.com/cb";
+    const reg = (await (await register(app, [evil], "Claude")).json()) as { client_id: string };
+    const page = await app.request(authorizeUrl(reg.client_id, pkce().challenge, { redirect_uri: evil }));
+    const html = await page.text();
+    expect(page.status).toBe(200);
+    expect(html).toContain("未確認のアプリ");
+    expect(html).toContain("evil.example.com");
+  });
+
+  it("does not warn for Claude's own redirect", async () => {
+    const { app } = setup();
+    const reg = (await (await register(app)).json()) as { client_id: string };
+    const html = await (await app.request(authorizeUrl(reg.client_id, pkce().challenge))).text();
+    expect(html).not.toContain("未確認のアプリ");
+  });
+
+  it("forbids framing of pages", async () => {
+    const { app } = setup();
+    const res = await app.request("/");
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+  });
+
+  it("rate limits registration per IP", async () => {
+    const { app } = setup();
+    const send = () =>
+      app.request("/register", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": "9.9.9.9" },
+        body: JSON.stringify({ redirect_uris: [REDIRECT] }),
+      });
+    for (let i = 0; i < 30; i++) expect((await send()).status).toBe(201);
+    expect((await send()).status).toBe(429);
   });
 });
