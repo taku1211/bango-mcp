@@ -18,7 +18,7 @@ npm login            # npm の bango-mcp を持っているアカウント
 npm publish          # prepublishOnly で typecheck・test・build が走る
 ```
 
-公開後、`npx -y bango-mcp --version` が `0.1.0` を返せばOKです。
+公開後、`npx -y bango-mcp --version` が `package.json` の version（いまは `0.2.0`）を返せばOKです。
 
 ## 3. 公式 MCP Registry に登録
 
@@ -42,3 +42,21 @@ mcp-publisher publish          # server.json を登録
 ## 5. バージョンを上げるとき
 
 `src/version.ts`・`package.json`・`server.json`（2か所）の version をそろえて上げてから、2〜3 を繰り返します。
+
+## 0.2.0 のリリース（エリア・業種リストのツール追加）
+
+0.2.0 では、エリア・業種で会社リストを作るツール（#10・#11）が入ります。API 側で範囲検索（`COMPANY_PROFILES_ENABLED`）を ON にした後に、次の順で進めます。
+
+1. リモート版を更新する。Railway の `bango-mcp-remote` は、いまは OAuth 修正のコミットに固定してある。デプロイ元を `main` に戻し、デプロイが終わったら `https://mcp.bango-api.jp/mcp` のツール一覧に新しいツールが出ていることを確かめる。
+2. npm に公開する（オーナーの Mac で実行）。
+   ```bash
+   git checkout main && git pull
+   npm ci
+   npm publish
+   npx -y bango-mcp@0.2.0 --version   # 0.2.0 と出ればOK
+   ```
+3. 公式 MCP Registry を更新する（オーナーの Mac で実行）。
+   ```bash
+   mcp-publisher login github
+   mcp-publisher publish
+   ```
