@@ -79,7 +79,7 @@ export function landingPage(mcpUrl: string): string {
 <p>Claude などの AI アシスタントから、日本の会社の法人番号・所在地・インボイス登録状況を調べられるリモート MCP サーバーです。</p>
 <p class="muted">コネクタの URL</p>
 <div class="client"><code>${escapeHtml(mcpUrl)}</code></div>
-<p class="muted">AI アシスタントの「コネクタを追加」にこの URL を入れ、Bango API アカウントでログインするだけで使えます。APIキーの設定は不要です。</p>
+<p class="muted">AI アシスタントの「カスタムコネクタを追加」で、名前に「Bango MCP」、URL にこのアドレスを入れ、Bango API アカウントでログインするだけで使えます。APIキーの設定は不要です。</p>
 <a class="button secondary" href="https://github.com/taku1211/bango-mcp#readme" rel="noopener">使い方を見る</a></div>`,
   );
 }

@@ -36,8 +36,8 @@ claude.ai・Claude Desktop・Claude Code・Cursor など、リモート MCP（�
 https://mcp.bango-api.jp/mcp
 ```
 
-- **claude.ai / Claude Desktop**: 設定 → コネクタ → 「カスタムコネクタを追加」に上の URL を入れる → ログイン画面でメール＋パスワードか Google でログイン
-- **Claude Code**: `claude mcp add --transport http bango https://mcp.bango-api.jp/mcp` → `/mcp` から認証
+- **claude.ai / Claude Desktop**: 設定 → コネクタ → 「カスタムコネクタを追加」で、名前に `Bango MCP`、URL に上の URL を入れる → ログイン画面でメール＋パスワードか Google でログイン
+- **Claude Code**: `claude mcp add --transport http bango-mcp https://mcp.bango-api.jp/mcp` → `/mcp` から認証
 - アカウントがない場合は [bango-api.jp/signup](https://bango-api.jp/signup) で無料登録（30日間Proトライアル付き）してから接続してください
 - 接続すると、ダッシュボードに「MCPコネクタ（アプリ名）」という APIキーが自動で作られます。利用回数はご契約プランの上限に数えられ、そのキーを削除すると接続が切れます
 
@@ -128,7 +128,7 @@ Official MCP server for [Bango API](https://bango-api.jp). It lets AI assistants
 
 Tools: `bango_find_company`, `bango_get_company`, `bango_check_invoice`, `bango_match_companies` (all read-only).
 
-Easiest: add the remote connector `https://mcp.bango-api.jp/mcp` in claude.ai, Claude Desktop, Claude Code or Cursor and sign in with your Bango API account (no API key setup needed). Or run it locally:
+Easiest: add a custom connector named `Bango MCP` with the URL `https://mcp.bango-api.jp/mcp` in claude.ai, Claude Desktop, Claude Code or Cursor and sign in with your Bango API account (no API key setup needed). Or run it locally:
 
 ```bash
 claude mcp add bango -e BANGO_API_KEY=your_key -- npx -y bango-mcp
