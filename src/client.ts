@@ -4,20 +4,16 @@ export const DEFAULT_BASE_URL = "https://api.bango-api.jp/v1";
 export const SIGNUP_URL = "https://bango-api.jp/signup";
 export const API_KEYS_URL = "https://bango-api.jp/dashboard/api-keys";
 export const PRICING_URL = "https://bango-api.jp/pricing";
-export const LISTS_URL = "https://bango-api.jp/dashboard/lists";
 
 /** Bango API の応答エンベロープ（必要な部分だけ） */
 export type Envelope<T> = {
   object: string;
   data: T;
   has_more?: boolean;
-  next_cursor?: string | null;
   meta?: {
     quota?: {
       api_requests?: { limit: number | null; remaining: number | null; unlimited: boolean } | null;
       batch_rows?: { limit: number | null; remaining: number | null; unlimited: boolean } | null;
-      /** エリア・業種リスト（/companies/profiles）で返した社数の月間枠 */
-      profile_rows?: { limit: number | null; remaining: number | null; unlimited: boolean } | null;
     };
     source?: { name: string; updated_at: string | null };
   };
@@ -164,13 +160,6 @@ function toBangoError(status: number, p: Problem, invalidKeyHint: string): Bango
       return new BangoError(`入力が正しくありません${detail}。${formatDetails(p.details)}`.trim(), status, code);
     case 429: {
       const wait = p.retry_after ? `${p.retry_after}秒ほど待ってから` : "しばらく待ってから";
-      if (code === "QUOTA_EXCEEDED" && p.limit_scope === "profile_rows") {
-        return new BangoError(
-          `今月のエリア・業種リストの社数枠を使い切りました${detail}。枠は月初にリセットされます。社数を増やす場合は ${PRICING_URL} で上位プランを確認してください。`,
-          status,
-          code,
-        );
-      }
       if (code === "QUOTA_EXCEEDED") {
         return new BangoError(
           `今月の利用上限に達しました${detail}。上限は月初にリセットされます。続けて使う場合は ${PRICING_URL} でプランを確認してください。`,

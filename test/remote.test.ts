@@ -14,9 +14,8 @@ const REDIRECT = "https://claude.ai/api/mcp/auth_callback";
 
 type Call = { url: string; init: RequestInit };
 
-function setup(opts: { onboarded?: boolean; onboardingCompletes?: boolean; password?: string; apiStatus?: number; googleLoginEnabled?: boolean; now?: () => number } = {}) {
+function setup(opts: { onboarded?: boolean; password?: string; apiStatus?: number; googleLoginEnabled?: boolean; now?: () => number } = {}) {
   const accountCalls: Call[] = [];
-  let onboarded = opts.onboarded !== false;
   const apiCalls: Call[] = [];
   const accountFetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
     const url = String(input);
@@ -31,13 +30,8 @@ function setup(opts: { onboarded?: boolean; onboardingCompletes?: boolean; passw
     if (url.includes("/auth/v1/token?grant_type=pkce")) {
       return Response.json({ access_token: "sb-google", token_type: "bearer" });
     }
-    if (url.endsWith("/v1/onboarding/complete")) {
-      if (opts.onboardingCompletes === false) return Response.json({ code: "DEPENDENCY_UNAVAILABLE" }, { status: 503 });
-      onboarded = true;
-      return Response.json({ onboarding_completed: true });
-    }
     if (url.endsWith("/v1/onboarding/api-keys")) {
-      if (!onboarded) return Response.json({ code: "NOT_FOUND" }, { status: 404 });
+      if (opts.onboarded === false) return Response.json({ code: "NOT_FOUND" }, { status: 404 });
       return Response.json({ api_key: { id: "key-1", issued: true, plaintext: "bango_live_issued", key_prefix: "bango_live", label: "x", created_at: "2026-11-20T00:00:00Z" } });
     }
     return new Response("not found", { status: 404 });
@@ -211,8 +205,6 @@ describe("authorize", () => {
     expect(html).toContain("&lt;b&gt;Claude&lt;/b&gt;");
     expect(html).toContain("claude.ai");
     expect(html).not.toContain("Googleでログイン");
-    expect(html).toContain("メールアドレスで無料登録");
-    expect(html).not.toContain("30日");
   });
   it("rejects an unknown client or a redirect uri that was not registered", async () => {
     const { app } = setup();
@@ -261,15 +253,8 @@ describe("password login", () => {
     expect(await res.text()).toContain("メールアドレスかパスワードが違います");
     expect(ctx.accountCalls.some((c) => c.url.endsWith("/onboarding/api-keys"))).toBe(false);
   });
-  it("finishes signup on the spot for an account that never opened the dashboard", async () => {
-    const ctx = setup({ onboarded: false });
-    const { tokenRes } = await fullFlow(ctx);
-    expect(tokenRes.status).toBe(200);
-    const complete = ctx.accountCalls.find((c) => c.url.endsWith("/v1/onboarding/complete"))!;
-    expect((complete.init.headers as Record<string, string>).authorization).toBe("Bearer sb-access");
-  });
   it("explains when the account has not finished signup", async () => {
-    const ctx = setup({ onboarded: false, onboardingCompletes: false });
+    const ctx = setup({ onboarded: false });
     const reg = (await (await register(ctx.app)).json()) as { client_id: string };
     const page = await ctx.app.request(authorizeUrl(reg.client_id, pkce().challenge));
     const res = await login(ctx.app, hiddenRequest(await page.text()));
@@ -395,7 +380,7 @@ describe("mcp endpoint", () => {
     const { tokens } = await fullFlow(ctx);
     const client = await mcpClient(ctx.app, tokens.access_token!);
     const tools = await client.listTools();
-    expect(tools.tools.map((t) => t.name).sort()).toEqual(["bango_check_invoice", "bango_count_companies", "bango_export_companies_csv", "bango_find_company", "bango_get_company", "bango_list_companies", "bango_match_companies"]);
+    expect(tools.tools.map((t) => t.name).sort()).toEqual(["bango_check_invoice", "bango_find_company", "bango_get_company", "bango_match_companies"]);
     const result = await client.callTool({ name: "bango_find_company", arguments: { company_name: "トヨタ自動車" } });
     expect(result.isError).toBeFalsy();
     const call = ctx.apiCalls.at(-1)!;
