@@ -12,8 +12,11 @@ AI    ：bango_check_invoice でその日付時点の有効性を確認します
 あなた：「この取引先リスト30社に法人番号を付けて」
 AI    ：bango_match_companies でまとめて名寄せし、確実な一致と要確認を分けて返します
 
-あなた：「大阪市の工務店で、公式サイトがある会社をリストにしてCSVで」
-AI    ：bango_list_companies で大阪市×建設×サイトありを取り、出典つきの表とCSVを返します
+あなた：「大阪市の工務店で、問い合わせフォームがある会社は何社ある？」
+AI    ：bango_count_companies で件数と内訳を数えます（無料・枠を使いません）
+
+あなた：「じゃあ300社をCSVで」
+AI    ：bango_export_companies_csv でCSVを作り、24時間有効なダウンロードリンクを返します
 ```
 
 ## できること（ツール）
@@ -24,11 +27,14 @@ AI    ：bango_list_companies で大阪市×建設×サイトありを取り、�
 | `bango_get_company` | 法人番号（13桁）か T番号から、正式名称・所在地・閉鎖の有無・インボイス登録状況を見る | API 1回 |
 | `bango_check_invoice` | T番号が有効か確かめる。最大20件まとめて、日付指定（その日時点）も可 | 1件につき API 1回 |
 | `bango_match_companies` | 会社名の一覧（最大50件）に法人番号をまとめて付ける（名寄せ） | 名寄せ 1件につき1行 |
-| `bango_list_companies` | 都道府県・市区町村（政令市は名前で全区）・郵便番号と業種で会社のリストを作る。公式サイトの有無で絞り込み可、CSVでも返せる | 返した社数（エリア・業種リストの月間社数枠） |
+| `bango_count_companies` | 都道府県・市区町村・郵便番号と業種に合う会社の数と内訳（サイト・電話・フォームの有無、業種別）を数える | なし（無料） |
+| `bango_list_companies` | 同じ条件で会社のリストを見る。公式サイト・電話・フォームの有無で絞り込み可、CSVでも返せる | 返した社数（エリア・業種リストの月間社数枠） |
+| `bango_export_companies_csv` | 同じ条件で最大10万社をCSVにして、ダウンロードリンク（24時間有効）を返す | 書き出した社数（同じ月に同じ会社は1回だけ） |
 
 - 「株式会社／㈱」「全角／半角」「ハイフン入りの番号」などは自動で吸収します。
 - 候補が複数あるときは、AI が勝手に1社に決めずにあなたへ確認するよう設計しています。
-- すべて読み取り専用です。データの変更や外部への送信は行いません。
+- CSV書き出し以外は読み取り専用です。どのツールもデータの変更や外部への送信は行いません。
+- 同じ月に同じ会社を取り直しても、社数枠は1回分しか使いません。
 - `bango_list_companies` の月間社数枠は Free 100社、Starter 500社、Growth 3,000社、Pro 10,000社です。電話番号・問い合わせフォームは、Free では有無だけ、Starter 以上では番号とURLまで返します。
 - 公式サイトURLと業種には出典（公的名簿・Common Crawl など）と観測日が付きます。出典を表示すれば、納品・組み込みを含む商用利用ができます。
 
@@ -135,7 +141,7 @@ BANGO_API_KEY=... npx @modelcontextprotocol/inspector node dist/index.js   # 手
 
 Official MCP server for [Bango API](https://bango-api.jp). It lets AI assistants identify Japanese companies by name (fuzzy matching) look up corporate numbers (法人番号), addresses and qualified-invoice (T-number) registration status, and build company lists by area and industry with official website URLs and sources (CSV available).
 
-Tools: `bango_find_company`, `bango_get_company`, `bango_check_invoice`, `bango_match_companies`, `bango_list_companies` (all read-only).
+Tools: `bango_find_company`, `bango_get_company`, `bango_check_invoice`, `bango_match_companies`, `bango_count_companies`, `bango_list_companies` (read-only) and `bango_export_companies_csv` (creates a CSV export).
 
 Easiest: add a custom connector named `Bango MCP` with the URL `https://mcp.bango-api.jp/mcp` in claude.ai, Claude Desktop, Claude Code, ChatGPT or Cursor and sign in with your Bango API account (no API key setup needed). Or run it locally:
 

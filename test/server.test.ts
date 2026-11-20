@@ -66,18 +66,20 @@ describe("normalize", () => {
 });
 
 describe("tools", () => {
-  it("lists five read-only tools with annotations", async () => {
+  it("lists the tools with annotations; only the CSV export is not read-only", async () => {
     const client = await connect(() => ({ status: 500, body: {} }));
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       "bango_check_invoice",
+      "bango_count_companies",
+      "bango_export_companies_csv",
       "bango_find_company",
       "bango_get_company",
       "bango_list_companies",
       "bango_match_companies",
     ]);
     for (const t of tools) {
-      expect(t.annotations?.readOnlyHint).toBe(true);
+      expect(t.annotations?.readOnlyHint).toBe(t.name !== "bango_export_companies_csv");
       expect(t.description?.length ?? 0).toBeGreaterThan(100);
     }
   });
@@ -394,4 +396,136 @@ describe("bango_list_companies", () => {
     expect(JSON.stringify(result.content)).toContain("社数");
   });
 });
+});
+
+describe("bango_count_companies", () => {
+  it("counts for free with the same filters and points to the next step", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    const client = await connect(
+      () => ({
+        status: 200,
+        body: env(
+          "company_profile_count",
+          {
+            total: 1200,
+            with_website: 1200,
+            with_phone: 900,
+            with_contact_form: 1200,
+            by_industry_major: [{ industry_major: "建設", count: 300 }],
+            excluded: 0,
+            already_delivered_this_month: 100,
+            quota_needed: 1100,
+          },
+          { meta: { quota: { profile_rows: { unlimited: false, limit: 500, remaining: 400 } } } },
+        ),
+      }),
+      { calls },
+    );
+
+    const result = await client.callTool({
+      name: "bango_count_companies",
+      arguments: { prefecture: "大阪", city: "大阪市", has_contact_form: true },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const url = calls[0].url;
+    expect(url.pathname).toBe("/v1/companies/profiles/count");
+    expect(url.searchParams.get("city_code")).toBe("27100");
+    expect(url.searchParams.get("has_contact_form")).toBe("true");
+    expect(url.searchParams.has("limit")).toBe(false);
+    const out = result.structuredContent as Record<string, any>;
+    expect(out).toMatchObject({ total: 1200, already_delivered_this_month: 100, remaining_this_month: 400 });
+    expect(out.hint).toContain("今月の残り枠は 400 社");
+  });
+
+  it("asks for an area or industry instead of calling the API", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    const client = await connect(() => ({ status: 200, body: {} }), { calls });
+
+    const result = await client.callTool({ name: "bango_count_companies", arguments: { has_website: true } });
+
+    expect(result.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("bango_export_companies_csv", () => {
+  const job = (status: string, extra: Record<string, unknown> = {}) => ({
+    id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    status,
+    row_count: 300,
+    contact_detail_included: false,
+    stopped_reason: status === "succeeded" ? "quota" : null,
+    error_code: null,
+    download_url: status === "succeeded" ? "https://api.example/v1/companies/profiles/exports/e/csv?expires=1&signature=x" : null,
+    ...extra,
+  });
+
+  it("starts an export with the filters as strings and returns the download link", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    let polls = 0;
+    const client = await connect(
+      (url, init) => {
+        if (init.method === "POST") return { status: 202, body: env("company_profile_export", job("pending")) };
+        polls += 1;
+        return { status: 200, body: env("company_profile_export", job(polls < 2 ? "running" : "succeeded")) };
+      },
+      { calls },
+    );
+
+    const result = await client.callTool({
+      name: "bango_export_companies_csv",
+      arguments: { prefecture: "大阪府", has_contact_form: true, max_rows: 500 },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(calls[0].url.pathname).toBe("/v1/companies/profiles/exports");
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      filters: { prefecture_code: "27", has_contact_form: "true" },
+      max_rows: 500,
+    });
+    const out = result.structuredContent as Record<string, any>;
+    expect(out.download_url).toContain("/csv?expires=");
+    expect(out.rows).toBe(300);
+    expect(out.hint).toContain("今月の社数枠に達した");
+    expect(out.hint).toContain("Starter以上なら値も入ります");
+  });
+
+  it("returns the export id while it is still running, and resumes with only that id", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    const running = await connect(
+      (_url, init) =>
+        init.method === "POST"
+          ? { status: 202, body: env("company_profile_export", job("pending")) }
+          : { status: 200, body: env("company_profile_export", job("running")) },
+    );
+    const first = await running.callTool({
+      name: "bango_export_companies_csv",
+      arguments: { prefecture: "大阪府", max_rows: 100000 },
+    });
+    expect((first.structuredContent as Record<string, any>).status).toBe("running");
+
+    const done = await connect(() => ({ status: 200, body: env("company_profile_export", job("succeeded")) }), { calls });
+    const second = await done.callTool({
+      name: "bango_export_companies_csv",
+      arguments: { export_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" },
+    });
+    expect((second.structuredContent as Record<string, any>).status).toBe("succeeded");
+    expect(calls.every((c) => c.init.method === "GET")).toBe(true);
+  });
+
+  it("explains a quota failure and requires max_rows for a new export", async () => {
+    const client = await connect((_url, init) =>
+      init.method === "POST"
+        ? { status: 202, body: env("company_profile_export", job("pending")) }
+        : { status: 200, body: env("company_profile_export", job("failed", { error_code: "quota_exceeded", row_count: 0 })) },
+    );
+
+    const missing = await client.callTool({ name: "bango_export_companies_csv", arguments: { prefecture: "大阪府" } });
+    const failed = await client.callTool({ name: "bango_export_companies_csv", arguments: { prefecture: "大阪府", max_rows: 10 } });
+
+    expect(missing.isError).toBe(true);
+    expect(failed.isError).toBe(true);
+    expect(JSON.stringify(failed.content)).toContain("今月の社数枠を使い切っている");
+  });
 });
