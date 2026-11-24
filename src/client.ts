@@ -151,10 +151,16 @@ export class BangoClient {
 }
 
 const PROFILES_PATH = "/companies/profiles";
+const LIST_SEARCH_PAUSED_MESSAGE =
+  "エリア・業種のリスト機能は現在一時停止中です。再開まで、会社名での検索（bango_find_company）や法人番号での照会（bango_get_company）をお使いください。";
 
 function toBangoError(status: number, p: Problem, invalidKeyHint: string, path = ""): BangoError {
   const code = p.code ?? null;
   const detail = p.detail ? `（${p.detail}）` : "";
+  // 一覧（/companies/profiles）は止まっている間 /companies/:法人番号 に当たり、法人番号の形式エラー(400)になる。
+  if (status === 400 && path === PROFILES_PATH && JSON.stringify(p.details ?? "").includes("corporate_number")) {
+    return new BangoError(LIST_SEARCH_PAUSED_MESSAGE, status, "LIST_SEARCH_PAUSED");
+  }
   switch (status) {
     case 401:
       return new BangoError(
@@ -177,7 +183,7 @@ function toBangoError(status: number, p: Problem, invalidKeyHint: string, path =
         return new BangoError(
           exportLookup
             ? "この書き出しが見つかりません。エリア・業種のリスト機能が一時停止中か、書き出しの期限が切れています。会社名での検索（bango_find_company）や法人番号での照会は使えます。"
-            : "エリア・業種のリスト機能は現在一時停止中です。再開まで、会社名での検索（bango_find_company）や法人番号での照会（bango_get_company）をお使いください。",
+            : LIST_SEARCH_PAUSED_MESSAGE,
           status,
           "LIST_SEARCH_PAUSED",
         );

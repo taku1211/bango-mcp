@@ -56,6 +56,18 @@ describe("BangoClient list search paused", () => {
     await expect(client.get("/companies/profiles/exports/abc")).rejects.toThrow("書き出しが見つかりません");
   });
 
+  it("treats the list hitting the corporate-number route (400) as paused", async () => {
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({ code: "VALIDATION_ERROR", details: [{ field: "corporate_number", code: "format" }] }),
+        { status: 400 },
+      )) as typeof fetch;
+    const client = new BangoClient({ apiKey: "k", fetchImpl, retryDelaysMs: [] });
+
+    await expect(client.get("/companies/profiles", { prefecture_code: "13" })).rejects.toThrow("一時停止中");
+    await expect(client.get("/companies/abc")).rejects.toThrow("入力が正しくありません");
+  });
+
   it("keeps the usual not-found message for other lookups", async () => {
     const { fetchImpl } = sequence([404]);
     const client = new BangoClient({ apiKey: "k", fetchImpl, retryDelaysMs: [] });
