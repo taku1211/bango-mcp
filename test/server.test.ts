@@ -363,6 +363,32 @@ describe("bango_list_companies", () => {
     expect(lines[1]).toContain("https://example.co.jp/");
   });
 
+  it("uses the same CSV columns as the API export, including FAX", async () => {
+    const contact = {
+      has_phone: true, has_contact_form: true, has_fax: true,
+      phone: { number: "0661234567" }, form_url: "https://example.co.jp/contact", fax: { number: "0661234568" }, source: "company_site",
+    };
+    const extra = {
+      contact,
+      established: { year_month: "2018-04" },
+      insured_employees: { count: 12, band: "10-19", source: "gbizinfo" },
+    };
+    const client = await connect(() => ({ status: 200, body: listBody([profile("1000000000004", extra)], null, 5) }));
+
+    const result = await client.callTool({ name: "bango_list_companies", arguments: { prefecture: "大阪府", format: "csv" } });
+
+    const out = result.structuredContent as Record<string, any>;
+    const [header, row] = String(out.csv).split("\r\n").map((l) => l.split(","));
+    expect(header.slice(16)).toEqual([
+      "電話番号あり", "問い合わせフォームあり", "電話番号", "問い合わせフォームURL", "FAX番号あり", "FAX番号", "連絡先の出典",
+      "設立年月(推定)", "被保険者数(厚生年金)", "被保険者数の規模帯", "被保険者数の出典",
+    ]);
+    expect(row.slice(16)).toEqual([
+      "あり", "あり", "0661234567", "https://example.co.jp/contact", "あり", "0661234568", "company_site",
+      "2018-04", "12", "10-19", "gbizinfo",
+    ]);
+  });
+
   it("requires an area or an industry without calling the API", async () => {
     const calls: Array<{ url: URL; init: RequestInit }> = [];
     const client = await connect(() => ({ status: 200, body: listBody([], null, 5) }), { calls });

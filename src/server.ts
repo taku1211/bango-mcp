@@ -171,8 +171,12 @@ type ProfileRow = {
     has_contact_form?: boolean;
     phone?: { number?: string } | null;
     form_url?: string | null;
+    has_fax?: boolean;
+    fax?: { number?: string } | null;
     source?: string | null;
   } | null;
+  established?: { year_month: string | null } | null;
+  insured_employees?: { count: number | null; band: string | null; source: string | null } | null;
 };
 
 type CompanyRow = ReturnType<typeof toCompanyRow>;
@@ -199,14 +203,18 @@ function toCompanyRow(p: ProfileRow) {
         }
       : null,
     ...(p.contact !== undefined ? { contact: p.contact } : {}),
+    ...(p.established ? { established_year_month: p.established.year_month } : {}),
+    ...(p.insured_employees ? { insured_employees: p.insured_employees } : {}),
   };
 }
 
+// 列の並び・見出しは API の範囲検索CSV（houjin-search apps/api/src/company-profiles/csv.ts）と同じにする。
 const CSV_HEADER = [
   "法人番号", "法人名", "都道府県", "市区町村", "番地", "郵便番号",
   "公式サイトURL", "URLの確認状態", "URLの出典", "URLの観測日",
   "業種(大分類)", "業種(細分類)", "日本標準産業分類コード", "日本標準産業分類名", "業種の根拠", "業種の出典",
-  "電話番号あり", "問い合わせフォームあり", "電話番号", "問い合わせフォームURL", "連絡先の出典",
+  "電話番号あり", "問い合わせフォームあり", "電話番号", "問い合わせフォームURL", "FAX番号あり", "FAX番号", "連絡先の出典",
+  "設立年月(推定)", "被保険者数(厚生年金)", "被保険者数の規模帯", "被保険者数の出典",
 ];
 
 function csvCell(raw: string | null | undefined): string {
@@ -223,12 +231,14 @@ function toCsv(rows: CompanyRow[]): string {
   const lines = [CSV_HEADER.join(",")];
   for (const r of rows) {
     const c = r.contact ?? null;
+    const e = r.insured_employees ?? null;
     lines.push(
       [
         r.corporate_number, r.name, r.prefecture, r.city, r.street, r.post_code,
         r.website?.url, r.website?.status, r.website?.source, r.website?.observed_at,
         r.industry?.major, r.industry?.minor, r.industry?.jsic_code, r.industry?.jsic_name, r.industry?.basis, r.industry?.source,
-        yesNo(c?.has_phone), yesNo(c?.has_contact_form), c?.phone?.number, c?.form_url, c?.source,
+        yesNo(c?.has_phone), yesNo(c?.has_contact_form), c?.phone?.number, c?.form_url, yesNo(c?.has_fax), c?.fax?.number, c?.source,
+        r.established_year_month, e?.count == null ? null : String(e.count), e?.band, e?.source,
       ]
         .map(csvCell)
         .join(","),
