@@ -54,6 +54,8 @@ export type BangoClientOptions = {
   userAgent?: string;
   /** APIキーが無効になったときの案内。リモート版は「キーを設定し直す」ではなく「再接続」を案内する */
   invalidKeyHint?: string;
+  /** GET が 503 のときに取り直すまでの待ち時間（ミリ秒）。要素数が取り直しの回数 */
+  retryDelaysMs?: readonly number[];
 };
 
 export class BangoClient {
@@ -63,6 +65,7 @@ export class BangoClient {
   private readonly timeoutMs: number;
   private readonly userAgent: string;
   private readonly invalidKeyHint: string;
+  private readonly retryDelaysMs: readonly number[];
 
   constructor(options: BangoClientOptions) {
     this.apiKey = options.apiKey?.trim() || undefined;
@@ -70,6 +73,7 @@ export class BangoClient {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 20_000;
     this.userAgent = options.userAgent ?? `bango-mcp/${VERSION} (+https://github.com/taku1211/bango-mcp)`;
+    this.retryDelaysMs = options.retryDelaysMs ?? [500, 1500];
     this.invalidKeyHint = options.invalidKeyHint ?? `${API_KEYS_URL} でキーを確認し、BANGO_API_KEY を設定し直してください。`;
   }
 
@@ -78,7 +82,17 @@ export class BangoClient {
     for (const [k, v] of Object.entries(query ?? {})) {
       if (v !== undefined) url.searchParams.set(k, String(v));
     }
-    return this.request<T>(url, { method: "GET" });
+    // 検索の同時実行枠が一瞬埋まっただけの 503 は、読み取りなので少し待って取り直す
+    // （MCP クライアントは複数のツールを同時に呼ぶことがある）。
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.request<T>(url, { method: "GET" });
+      } catch (error) {
+        const delay = this.retryDelaysMs[attempt];
+        if (!(error instanceof BangoError) || error.status !== 503 || delay === undefined) throw error;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
   }
 
   async post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<Envelope<T>> {
