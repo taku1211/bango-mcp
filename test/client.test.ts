@@ -18,7 +18,7 @@ describe("BangoClient retries", () => {
     const { calls, fetchImpl } = sequence([503, 200]);
     const client = new BangoClient({ apiKey: "k", fetchImpl, retryDelaysMs: [0, 0] });
 
-    await expect(client.get("/v1/companies/profiles/count")).resolves.toMatchObject({ data: { ok: true } });
+    await expect(client.get("/companies/profiles/count")).resolves.toMatchObject({ data: { ok: true } });
     expect(calls).toHaveLength(2);
   });
 
@@ -26,7 +26,7 @@ describe("BangoClient retries", () => {
     const { calls, fetchImpl } = sequence([503]);
     const client = new BangoClient({ apiKey: "k", fetchImpl, retryDelaysMs: [0, 0] });
 
-    await expect(client.get("/v1/companies/profiles/count")).rejects.toBeInstanceOf(BangoError);
+    await expect(client.get("/companies/profiles/count")).rejects.toBeInstanceOf(BangoError);
     expect(calls).toHaveLength(3);
   });
 
@@ -42,5 +42,24 @@ describe("BangoClient retries", () => {
       new BangoClient({ apiKey: "k", fetchImpl: post.fetchImpl, retryDelaysMs: [0] }).post("/v1/x", {}),
     ).rejects.toBeInstanceOf(BangoError);
     expect(post.calls).toHaveLength(1);
+  });
+});
+
+describe("BangoClient list search paused", () => {
+  it("says list search is paused when its routes are gone", async () => {
+    const { fetchImpl } = sequence([404]);
+    const client = new BangoClient({ apiKey: "k", fetchImpl, retryDelaysMs: [] });
+
+    await expect(client.get("/companies/profiles/count")).rejects.toThrow("一時停止中");
+    await expect(client.get("/companies/profiles")).rejects.toThrow("一時停止中");
+    await expect(client.post("/companies/profiles/exports", {})).rejects.toThrow("一時停止中");
+    await expect(client.get("/companies/profiles/exports/abc")).rejects.toThrow("書き出しが見つかりません");
+  });
+
+  it("keeps the usual not-found message for other lookups", async () => {
+    const { fetchImpl } = sequence([404]);
+    const client = new BangoClient({ apiKey: "k", fetchImpl, retryDelaysMs: [] });
+
+    await expect(client.get("/companies/1234567890123")).rejects.toThrow("該当するデータが見つかりませんでした");
   });
 });

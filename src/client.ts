@@ -144,13 +144,15 @@ export class BangoClient {
       json = null;
     }
     if (!res.ok) {
-      throw toBangoError(res.status, (json ?? {}) as Problem, this.invalidKeyHint);
+      throw toBangoError(res.status, (json ?? {}) as Problem, this.invalidKeyHint, url.pathname.slice(new URL(this.baseUrl).pathname.replace(/\/+$/, "").length));
     }
     return json as Envelope<T>;
   }
 }
 
-function toBangoError(status: number, p: Problem, invalidKeyHint: string): BangoError {
+const PROFILES_PATH = "/companies/profiles";
+
+function toBangoError(status: number, p: Problem, invalidKeyHint: string, path = ""): BangoError {
   const code = p.code ?? null;
   const detail = p.detail ? `（${p.detail}）` : "";
   switch (status) {
@@ -168,6 +170,18 @@ function toBangoError(status: number, p: Problem, invalidKeyHint: string): Bango
         code,
       );
     case 404:
+      // エリア・業種リスト（範囲検索）は API 側の設定で止められる。止まっている間は
+      // ルート自体が無くなり 404 になるので、「データが無い」ではなく停止中と伝える。
+      if (path === PROFILES_PATH || path.startsWith(`${PROFILES_PATH}/`)) {
+        const exportLookup = path.startsWith(`${PROFILES_PATH}/exports/`);
+        return new BangoError(
+          exportLookup
+            ? "この書き出しが見つかりません。エリア・業種のリスト機能が一時停止中か、書き出しの期限が切れています。会社名での検索（bango_find_company）や法人番号での照会は使えます。"
+            : "エリア・業種のリスト機能は現在一時停止中です。再開まで、会社名での検索（bango_find_company）や法人番号での照会（bango_get_company）をお使いください。",
+          status,
+          "LIST_SEARCH_PAUSED",
+        );
+      }
       return new BangoError(
         `該当するデータが見つかりませんでした${detail}。番号の打ち間違いがないか確認するか、会社名なら bango_find_company で検索してください。`,
         status,
