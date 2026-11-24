@@ -18,7 +18,7 @@ npm login            # npm の bango-mcp を持っているアカウント
 npm publish          # prepublishOnly で typecheck・test・build が走る
 ```
 
-公開後、`npx -y bango-mcp --version` が `package.json` の version（いまは `0.2.0`）を返せばOKです。
+公開後、`npx -y bango-mcp --version` が `package.json` の version（いまは `0.2.1`）を返せばOKです。
 
 ## 3. 公式 MCP Registry に登録
 
@@ -42,6 +42,10 @@ mcp-publisher publish          # server.json を登録
 ## 5. バージョンを上げるとき
 
 `src/version.ts`・`package.json`・`server.json`（2か所）の version をそろえて上げてから、2〜3 を繰り返します。
+
+## 0.2.1
+
+0.2.0 は CSV に FAX 列が入る前（#14 より前）の内容で公開されたため、#14 を入れて 0.2.1 として出し直しました。手順は 0.2.0 と同じです。
 
 ## 0.2.0 のリリース（エリア・業種リストのツール追加）
 
