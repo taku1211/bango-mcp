@@ -18,7 +18,7 @@ npm login            # npm の bango-mcp を持っているアカウント
 npm publish          # prepublishOnly で typecheck・test・build が走る
 ```
 
-公開後、`npx -y bango-mcp --version` が `package.json` の version（いまは `0.2.1`）を返せばOKです。
+公開後、`npx -y bango-mcp --version` が `package.json` の version（いまは `0.3.0`）を返せばOKです。
 
 ## 3. 公式 MCP Registry に登録
 
@@ -42,6 +42,10 @@ mcp-publisher publish          # server.json を登録
 ## 5. バージョンを上げるとき
 
 `src/version.ts`・`package.json`・`server.json`（2か所）の version をそろえて上げてから、2〜3 を繰り返します。
+
+## 0.3.0（絞り込みと並び順の追加）
+
+リスト系3ツールに FAX・従業員数・設立・最終確認日の絞り込み、「なし」の指定、並び順（order）を足しました（#19）。API 側の houjin-search#770 が本番に出てから公開します。手順は 0.2.0 と同じで、Railway の `bango-mcp-remote` が main から再デプロイされたことも確かめます。
 
 ## 0.2.1
 

@@ -339,8 +339,38 @@ const FILTER_INPUT = {
     .describe("日本標準産業分類（第14回改定）の中分類2桁。例: 06 総合工事業、85 社会保険・社会福祉・介護事業"),
   has_website: z.boolean().optional().describe("true で公式サイトURLがある会社だけ、false でない会社だけ"),
   verified_only: z.boolean().optional().describe("true でサイト自身が社名を名乗っている根拠のあるURLだけに絞る"),
-  has_phone: z.boolean().optional().describe("true で電話番号がある会社だけ"),
-  has_contact_form: z.boolean().optional().describe("true で問い合わせフォームがある会社だけ（フォーム営業向け）"),
+  has_phone: z.boolean().optional().describe("true で電話番号がある会社だけ、false でない会社だけ"),
+  has_contact_form: z.boolean().optional().describe("true で問い合わせフォームがある会社だけ（フォーム営業向け）、false でない会社だけ"),
+  has_fax: z.boolean().optional().describe("true でFAX番号がある会社だけ、false でない会社だけ"),
+  insured_employees_min: z.number().int().min(0).optional().describe("従業員数（厚生年金の被保険者数）の下限。例: 10"),
+  insured_employees_max: z.number().int().min(0).optional().describe("従業員数（厚生年金の被保険者数）の上限。例: 29"),
+  has_insured_employees: z.boolean().optional().describe("false で従業員数のデータがない会社だけ（true であるだけ）"),
+  established_from: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .optional()
+    .describe("この年月以降に設立された会社だけ（YYYY-MM）。例: 3年以内なら3年前の年月"),
+  established_to: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .optional()
+    .describe("この年月までに設立された会社だけ（YYYY-MM）"),
+  established_known: z
+    .boolean()
+    .optional()
+    .describe("false で設立年月が分からない会社だけ。ほぼ2015年10月（法人番号の制度開始）より前に設立された会社"),
+  web_verified_from: z.iso.date().optional().describe("公式サイト・連絡先をこの日以降に確認した会社だけ（YYYY-MM-DD）"),
+};
+
+// 一覧・CSV書き出しの並び順。値のない会社は最後にまとめる。
+const ORDER_INPUT = {
+  order: z
+    .enum(["companies_first", "name", "established_desc", "employees_desc", "verified_desc", "corporate_number"])
+    .optional()
+    .describe(
+      "並び順。companies_first（既定。株式会社などの会社を先に）、name（社名の50音順）、established_desc（設立が新しい順）、" +
+        "employees_desc（従業員が多い順）、verified_desc（サイト確認日が新しい順）、corporate_number（法人番号順）",
+    ),
 };
 
 type FilterArgs = {
@@ -353,14 +383,25 @@ type FilterArgs = {
   verified_only?: boolean;
   has_phone?: boolean;
   has_contact_form?: boolean;
+  has_fax?: boolean;
+  insured_employees_min?: number;
+  insured_employees_max?: number;
+  has_insured_employees?: boolean;
+  established_from?: string;
+  established_to?: string;
+  established_known?: boolean;
+  web_verified_from?: string;
 };
 
 type ResolvedFilters =
-  | { ok: true; params: Record<string, string | boolean | undefined>; query: Record<string, unknown> }
+  | { ok: true; params: Record<string, string | number | boolean | undefined>; query: Record<string, unknown> }
   | { ok: false; message: string };
 
 // 人が言う「大阪市」「大阪」などを API のコードに直す。直せないときは次に何を渡せばよいかを返す。
-function resolveFilters({ prefecture, city, post_code_prefix, industry, jsic_code, has_website, verified_only, has_phone, has_contact_form }: FilterArgs): ResolvedFilters {
+function resolveFilters(args: FilterArgs): ResolvedFilters {
+  const { prefecture, city, post_code_prefix, industry, jsic_code, has_website, verified_only } = args;
+  const { has_phone, has_contact_form, has_fax, has_insured_employees, established_known } = args;
+  const { insured_employees_min, insured_employees_max, established_from, established_to, web_verified_from } = args;
   const bad = (message: string): ResolvedFilters => ({ ok: false, message });
   let prefecture_code: string | undefined;
   if (prefecture) {
@@ -396,8 +437,16 @@ function resolveFilters({ prefecture, city, post_code_prefix, industry, jsic_cod
       jsic_code,
       has_website,
       web_status: verified_only ? "verified" : undefined,
-      has_phone: has_phone || undefined,
-      has_contact_form: has_contact_form || undefined,
+      has_phone,
+      has_contact_form,
+      has_fax,
+      insured_employees_min,
+      insured_employees_max,
+      has_insured_employees,
+      established_from,
+      established_to,
+      established_known,
+      web_verified_from,
     },
     query: {
       prefecture: prefecture_code ? prefectureName(prefecture_code) : null,
@@ -407,8 +456,16 @@ function resolveFilters({ prefecture, city, post_code_prefix, industry, jsic_cod
       jsic_code: jsic_code ?? null,
       has_website: has_website ?? null,
       verified_only: !!verified_only,
-      has_phone: !!has_phone,
-      has_contact_form: !!has_contact_form,
+      has_phone: has_phone ?? null,
+      has_contact_form: has_contact_form ?? null,
+      has_fax: has_fax ?? null,
+      insured_employees_min: insured_employees_min ?? null,
+      insured_employees_max: insured_employees_max ?? null,
+      has_insured_employees: has_insured_employees ?? null,
+      established_from: established_from ?? null,
+      established_to: established_to ?? null,
+      established_known: established_known ?? null,
+      web_verified_from: web_verified_from ?? null,
     },
   };
 }
@@ -784,26 +841,34 @@ export function createServer(options: ServerOptions): McpServer {
         "Use this for requests like 「大阪市の工務店で公式サイトがある会社をリストにして」「堺市の介護事業所を100社CSVで」. " +
         "Give at least one of prefecture, city, post_code_prefix, industry or jsic_code. " +
         "city accepts a designated city name (大阪市, 横浜市, 東京23区 ...) which covers all its wards, or a 5-digit local government code for any other city. " +
-        "Results are ordered by corporate number; when next_cursor is not null, call again with cursor to get the next page. " +
+        "Filter by contact data (has_website / has_phone / has_contact_form / has_fax: true = has it, false = lacks it), employee count, founding month and last-verified date. " +
+        "Choose order to sort by name, newest founding, most employees, most recently verified or corporate number (default: companies first). " +
+        "When next_cursor is not null, call again with the same filters, the same order and cursor to get the next page. " +
         "Set format to csv to also receive a ready-to-save CSV (UTF-8, CRLF). " +
         "Phone and contact form: on the Free plan only has_phone / has_contact_form are filled; Starter and above also return the number and the form URL. " +
         "Each company returned counts against the user's monthly company quota for list search (remaining_this_month), separately from API requests. " +
         "Ask for only as many companies as the user needs.",
       inputSchema: {
         ...FILTER_INPUT,
+        ...ORDER_INPUT,
         limit: z.number().int().min(1).max(100).optional().describe("1回に返す社数（1〜100、既定20）。返した社数だけ月間の社数枠を使う"),
-        cursor: z.string().regex(/^\d{13}$/).optional().describe("前回の next_cursor。続きのページを取るときに渡す"),
+        cursor: z
+          .string()
+          .regex(/^[A-Za-z0-9_-]{13,700}$/)
+          .optional()
+          .describe("前回の next_cursor。続きのページを取るときに、同じ条件・同じ order と一緒に渡す"),
         format: z.enum(["rows", "csv"]).optional().describe("csv にすると、表と一緒に保存用のCSV文字列（csv）も返す"),
       },
       annotations: { title: "エリア・業種で会社のリストを作る", ...READ_ONLY },
     },
-    async ({ prefecture, city, post_code_prefix, industry, jsic_code, has_website, verified_only, has_phone, has_contact_form, limit, cursor, format }) =>
+    async ({ limit, cursor, format, order, ...filters }) =>
       guard(async () => {
-        const resolved = resolveFilters({ prefecture, city, post_code_prefix, industry, jsic_code, has_website, verified_only, has_phone, has_contact_form });
+        const resolved = resolveFilters(filters);
         if (!resolved.ok) return fail(resolved.message);
-        const { params, query } = resolved;
+        const { params } = resolved;
+        const query = { ...resolved.query, order: order ?? "companies_first" };
 
-        const res = await client.get<ProfileRow[]>("/companies/profiles", { ...params, limit: limit ?? 20, cursor });
+        const res = await client.get<ProfileRow[]>("/companies/profiles", { ...params, order, limit: limit ?? 20, cursor });
 
         const companies = res.data.map(toCompanyRow);
         const quota = res.meta?.quota?.profile_rows;
@@ -839,7 +904,7 @@ export function createServer(options: ServerOptions): McpServer {
         "Count Japanese companies matching an area / industry before making a list, with a breakdown (with website, with phone, with contact form, by industry). " +
         "Free: it does not use the monthly company quota, so call it first whenever the user asks for a list, and tell them the count before fetching rows. " +
         "Also returns how many of them were already delivered this month (re-delivering them is free) and how many quota rows a full export would use. " +
-        "Takes the same filters as bango_list_companies.",
+        "Takes the same filters as bango_list_companies (order does not change a count).",
       inputSchema: { ...FILTER_INPUT },
       annotations: { title: "エリア・業種に合う会社の数を数える", ...READ_ONLY },
     },
@@ -886,6 +951,7 @@ export function createServer(options: ServerOptions): McpServer {
         "On the Free plan the CSV has phone / contact form as あり/なし only; Starter and above include the number and the form URL.",
       inputSchema: {
         ...FILTER_INPUT,
+        ...ORDER_INPUT,
         max_rows: z.number().int().min(1).max(100000).optional().describe("書き出す最大社数（1〜100000）。新しく始めるときは必須"),
         export_id: z.string().uuid().optional().describe("前回の export_id。処理中だった書き出しの結果を取りに来るときは、これだけを渡す"),
       },
@@ -897,7 +963,7 @@ export function createServer(options: ServerOptions): McpServer {
         openWorldHint: true,
       },
     },
-    async ({ export_id, max_rows, ...filters }) =>
+    async ({ export_id, max_rows, order, ...filters }) =>
       guard(async () => {
         let id = export_id;
         if (!id) {
@@ -905,7 +971,7 @@ export function createServer(options: ServerOptions): McpServer {
           const resolved = resolveFilters(filters);
           if (!resolved.ok) return fail(resolved.message);
           const body = Object.fromEntries(
-            Object.entries(resolved.params)
+            Object.entries({ ...resolved.params, order })
               .filter(([, v]) => v !== undefined)
               .map(([k, v]) => [k, String(v)]),
           );
