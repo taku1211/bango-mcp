@@ -424,6 +424,113 @@ describe("bango_list_companies", () => {
 });
 });
 
+describe("list filters and order", () => {
+  const emptyList = {
+    object: "list",
+    item: "company_profile",
+    data: [],
+    has_more: false,
+    next_cursor: null,
+    limit: 20,
+    links: { next: null },
+    meta: { quota: { api_requests: null, batch_rows: null, profile_rows: null } },
+  };
+
+  it("passes the new filters, 'without' flags and the order to the range search", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    const client = await connect(() => ({ status: 200, body: emptyList }), { calls });
+    const cursor = Buffer.from(JSON.stringify({ o: "name", k: "サンプル", n: "1000000000001" })).toString("base64url");
+
+    const result = await client.callTool({
+      name: "bango_list_companies",
+      arguments: {
+        prefecture: "大阪府",
+        has_phone: false,
+        has_contact_form: true,
+        has_fax: false,
+        insured_employees_min: 10,
+        insured_employees_max: 29,
+        established_from: "2023-11",
+        web_verified_from: "2026-10-27",
+        order: "name",
+        cursor,
+      },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const q = calls[0].url.searchParams;
+    expect(q.get("has_phone")).toBe("false");
+    expect(q.get("has_contact_form")).toBe("true");
+    expect(q.get("has_fax")).toBe("false");
+    expect(q.get("insured_employees_min")).toBe("10");
+    expect(q.get("insured_employees_max")).toBe("29");
+    expect(q.get("established_from")).toBe("2023-11");
+    expect(q.get("web_verified_from")).toBe("2026-10-27");
+    expect(q.get("order")).toBe("name");
+    expect(q.get("cursor")).toBe(cursor);
+    const out = result.structuredContent as Record<string, any>;
+    expect(out.query).toMatchObject({ has_phone: false, has_fax: false, order: "name" });
+  });
+
+  it("selects companies without employee data or founded before the corporate number system", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    const client = await connect(() => ({ status: 200, body: emptyList }), { calls });
+
+    await client.callTool({
+      name: "bango_list_companies",
+      arguments: { prefecture: "27", has_insured_employees: false, established_known: false },
+    });
+
+    const q = calls[0].url.searchParams;
+    expect(q.get("has_insured_employees")).toBe("false");
+    expect(q.get("established_known")).toBe("false");
+    expect(q.has("order")).toBe(false);
+  });
+
+  it("keeps the order when exporting a CSV", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    const client = await connect(
+      (_url, init) =>
+        init.method === "POST"
+          ? { status: 202, body: env("company_profile_export", { id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", status: "pending" }) }
+          : {
+              status: 200,
+              body: env("company_profile_export", {
+                id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                status: "succeeded",
+                row_count: 5,
+                contact_detail_included: true,
+                stopped_reason: null,
+                error_code: null,
+                download_url: "https://api.example/x.csv",
+              }),
+            },
+      { calls },
+    );
+
+    await client.callTool({
+      name: "bango_export_companies_csv",
+      arguments: { prefecture: "27", has_fax: true, order: "employees_desc", max_rows: 5 },
+    });
+
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      filters: { prefecture_code: "27", has_fax: "true", order: "employees_desc" },
+      max_rows: 5,
+    });
+  });
+
+  it("rejects a malformed founding month before calling the API", async () => {
+    const calls: Array<{ url: URL; init: RequestInit }> = [];
+    const client = await connect(() => ({ status: 200, body: emptyList }), { calls });
+    const result = await client.callTool({
+      name: "bango_list_companies",
+      arguments: { prefecture: "27", established_from: "2023/11" },
+    });
+    expect(result.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("bango_count_companies", () => {
   it("counts for free with the same filters and points to the next step", async () => {
     const calls: Array<{ url: URL; init: RequestInit }> = [];
